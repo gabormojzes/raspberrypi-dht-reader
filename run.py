@@ -4,7 +4,7 @@ from dht22_reader.dht22_reader import DHT22Reader
 
 # Check if the correct number of arguments is provided
 if len(sys.argv) != 4:
-    print('Usage: python start.py <chip_path> <line_offset> <sensor_reading_delay>')
+    print('Usage: python run.py <chip_path> <line_offset> <sensor_reading_delay>')
     sys.exit(1)
 
 # Path to the GPIO chip
