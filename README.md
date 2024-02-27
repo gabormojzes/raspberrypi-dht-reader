@@ -1,19 +1,18 @@
-# Raspberry Pi DHT22 Reader
+# Raspberry Pi DHT11/DHT22 Reader
 
 Tested on a Raspberry Pi 5 running Ubuntu Server version 23.10.
 
-
 ### How to use
 ```
-git clone https://github.com/gabormojzes/raspberrypi-dht22-reader.git
-cd raspberrypi-dht22-reader
+git clone https://github.com/gabormojzes/raspberrypi-dht-reader.git
+cd raspberrypi-dht-reader
 python3 -m venv venv
 source venv/bin/activate
 
 pip install gpiod
-python run.py /dev/gpiochip4 4 2
+python run.py DHT22 /dev/gpiochip4 4 2
 ```
-python run.py <chip_path> <line_offset> <sensor_reading_delay>
+python run.py <dht_type> <chip_path> <line_offset> <sensor_reading_delay>
 
 ### Example output
 ```

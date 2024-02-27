@@ -3,13 +3,13 @@ import gpiod
 from gpiod.line import Direction, Value
 
 
-class DHT22Reader:
+class DHTReader:
     """
-    A class to read data from a DHT22 sensor using GPIO.
+    A class to read data from a DHT sensor using GPIO.
 
     Attributes:
         _PULSE_TIMEOUT_THRESHOLD (float): Timeout threshold for pulse reception (100 μs)
-        _EXPECTED_PULSES (int): Expected number of pulses during data reception from DHT22 sensor
+        _EXPECTED_PULSES (int): Expected number of pulses during data reception from DHT sensor
         _PULSE_DURATION_THRESHOLD (int): Threshold for pulse duration for binary conversion (50 μs)
     """
 
@@ -17,27 +17,30 @@ class DHT22Reader:
     _EXPECTED_PULSES = 83
     _PULSE_DURATION_THRESHOLD = 50
 
-    def __init__(self, chip_path: str, line_offset: int) -> None:
+    def __init__(self, dht_type: str, chip_path: str, line_offset: int) -> None:
         """
-        Initializes the DHT22Reader.
+        Initializes the DHTReader.
 
         Args:
             chip_path (str): The path to the GPIO chip.
             line_offset (int): The offset of the GPIO line.
+            dht_type (str): The type of the DHT sensor.
         """
         self._chip_path = chip_path
         self._line_offset = line_offset
+        self._dht_type = dht_type.upper()
 
     def read_data(self) -> tuple[float, float, bool]:
         """
-        Reads data from the DHT22 sensor.
+        Reads data from the DHT sensor.
 
         Returns:
-            tuple: A tuple containing humidity, temperature, and a boolean indicating negative temperature.
+            tuple[float, float, bool]: A tuple containing humidity, temperature,
+            and a boolean indicating negative temperature.
         """
         with gpiod.request_lines(
             self._chip_path,
-            consumer='DHT22',
+            consumer='DHT',
             config={self._line_offset: gpiod.LineSettings(direction=Direction.OUTPUT)}
         ) as request:
             request.set_value(self._line_offset, Value.ACTIVE)
@@ -51,12 +54,13 @@ class DHT22Reader:
             request.reconfigure_lines(
                 config={self._line_offset: gpiod.LineSettings(direction=Direction.INPUT)}
             )
-            # Delay to line up with the first ~80 μs low pulse from the DHT22 sensor
+            # Delay to line up with the first ~80 μs low pulse from the DHT sensor
             time.sleep(0.000001)
 
             # Receive and process data
             data = self._receive_data(request)
             binary_data = self._convert_to_binary(data)
+
             self._validate_checksum(binary_data)
 
             humidity = self._get_humidity(binary_data)
@@ -66,13 +70,13 @@ class DHT22Reader:
 
     def _receive_data(self, request: gpiod.LineRequest) -> list[float]:
         """
-        Receives data from the DHT22 sensor.
+        Receives data from the DHT sensor.
 
         Args:
             request (gpiod.LineRequest): The GPIO line request object.
 
         Returns:
-            list: A list containing pulse duration data.
+            list[float]: A list containing pulse duration data.
         """
         data = [0] * self._EXPECTED_PULSES
         for i, _ in enumerate(data):
@@ -90,50 +94,64 @@ class DHT22Reader:
         Converts pulse duration data to binary.
 
         Args:
-            data (list): A list containing pulse duration data.
+            data (list[float]): A list containing pulse duration data.
 
         Returns:
-            list: A list containing binary data.
+            list[int]: A list containing binary data.
         """
-        # Convert high pulse durations to microseconds
-        data = [duration * 10 ** 6 for duration in data[3::2]]
-        # Translate time durations into binary representations
-        # ~26-28 μs high pulse means "0" and ~70 μs high pulse means "1"
-        return [1 if duration > self._PULSE_DURATION_THRESHOLD else 0 for duration in data]
+        high_pulses = [duration * 10 ** 6 for duration in data[3::2]]
+        # ~26-28 μs high pulse indicates "0", while a ~70 μs high pulse represents "1".
+        return [1 if duration > self._PULSE_DURATION_THRESHOLD else 0 for duration in high_pulses]
 
-    @staticmethod
-    def _get_humidity(binary_data: list[int]) -> float:
+    def _get_humidity(self, binary_data: list[int]) -> float:
         """
         Gets humidity from binary data.
 
         Args:
-            data (list): A list containing binary data.
+            binary_data (list[int]): A list containing binary data.
 
         Returns:
             float: The humidity value.
         """
-        humidity_data = binary_data[0:16]  # Humidity is 2 bytes
-        return int(''.join(map(str, humidity_data)), 2) / 10
+        # Humidity is 2 bytes
+        humidity_bits = binary_data[0:16]
 
-    @staticmethod
-    def _get_temperature(binary_data: list[int]) -> tuple[float, bool]:
+        if self._dht_type == 'DHT11':
+            integer_part = int(''.join(map(str, humidity_bits[0:8])), 2)
+            decimal_part = int(''.join(map(str, humidity_bits[8:16])), 2)
+            humidity = integer_part + (decimal_part / 10)
+            return humidity
+
+        elif self._dht_type == 'DHT22':
+            humidity = int(''.join(map(str, humidity_bits)), 2) / 10
+            return humidity
+
+    def _get_temperature(self, binary_data: list[int]) -> tuple[float, bool]:
         """
         Gets temperature from binary data.
 
         Args:
-            binary_data (list): A list containing binary data.
+            binary_data (list[int]): A list containing binary data.
 
         Returns:
-            tuple: A tuple containing temperature and a boolean indicating negative temperature.
+            tuple[float, bool]: A tuple containing temperature
+            and a boolean indicating negative temperature.
         """
-        temperature_data = binary_data[16:32]  # Temperature is 2 bytes
-        is_negative = temperature_data[0] == 1
+        # Temperature is 2 bytes
+        temperature_bits = binary_data[16:32]
 
-        if is_negative:
-            temperature_data[0] = 0
+        if self._dht_type == 'DHT11':
+            integer_part = int(''.join(map(str, temperature_bits[0:8])), 2)
+            decimal_part = int(''.join(map(str, temperature_bits[8:16])), 2)
+            temperature = integer_part + (decimal_part / 10)
+            return temperature, False
 
-        temperature = int(''.join(map(str, temperature_data)), 2) / 10
-        return temperature, is_negative
+        elif self._dht_type == 'DHT22':
+            is_negative = temperature_bits[0] == 1
+            if is_negative:
+                temperature_bits[0] = 0
+            temperature = int(''.join(map(str, temperature_bits)), 2) / 10
+            return temperature, is_negative
 
     @staticmethod
     def _validate_checksum(binary_data: list[int]) -> None:
@@ -141,7 +159,7 @@ class DHT22Reader:
         Validates the checksum of the received data.
 
         Args:
-            binary_data (list): A list containing binary data.
+            binary_data (list[int]): A list containing binary data.
 
         Raises:
             RuntimeError: If the checksum is invalid.
