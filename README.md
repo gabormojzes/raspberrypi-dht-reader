@@ -1,6 +1,6 @@
 # Raspberry Pi DHT11/DHT22 Reader
 
-Tested on a Raspberry Pi 5 running Ubuntu Server version 23.10.
+Tested on a Raspberry Pi 5, both running Ubuntu Server version 23.10 (64-bit) and Raspberry Pi OS (64-bit) (Debian version: 12).
 
 ### How to use
 ```
