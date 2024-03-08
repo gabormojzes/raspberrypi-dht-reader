@@ -51,6 +51,7 @@ class DHTReader:
             request.set_value(self._line_offset, Value.INACTIVE)
             time.sleep(0.02)  # Wait 20 ms
 
+            request.set_value(self._line_offset, Value.ACTIVE)
             # Configure the GPIO line for input mode
             request.reconfigure_lines(
                 config={self._line_offset: gpiod.LineSettings(direction=Direction.INPUT)}
