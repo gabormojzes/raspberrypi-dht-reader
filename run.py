@@ -27,7 +27,10 @@ except ValueError:
 # Delay between sensor readings in seconds
 try:
     sensor_reading_delay = float(sys.argv[4])
-    if sensor_reading_delay < 2:
+    if dht_type == 'DHT11' and sensor_reading_delay < 1:
+        print('Error: Sensor reading delay cannot be less than 1 second')
+        sys.exit(1)
+    elif dht_type == 'DHT22' and sensor_reading_delay < 2:
         print('Error: Sensor reading delay cannot be less than 2 seconds')
         sys.exit(1)
 except ValueError:
