@@ -12,11 +12,13 @@ class DHTReader:
         _PULSE_TIMEOUT_THRESHOLD (float): Timeout threshold for pulse reception (100 μs)
         _EXPECTED_PULSES (int): Expected number of pulses during data reception from DHT sensor
         _PULSE_DURATION_THRESHOLD (int): Threshold for pulse duration for binary conversion (50 μs)
+        _SUPPORTED_SENSOR_TYPES (list[str]): List of supported DHT sensor types.
     """
 
     _PULSE_TIMEOUT_THRESHOLD = 0.0001
     _EXPECTED_PULSES = 83
     _PULSE_DURATION_THRESHOLD = 50
+    _SUPPORTED_SENSOR_TYPES = ['DHT11', 'DHT22']
 
     def __init__(self, dht_type: str, chip_path: str, line_offset: int) -> None:
         """
@@ -26,8 +28,14 @@ class DHTReader:
             dht_type (str): The type of the DHT sensor.
             chip_path (str): The path to the GPIO chip.
             line_offset (int): The offset of the GPIO line.
+
+        Raises:
+            ValueError: If the DHT type is not supported.
         """
         self._dht_type = dht_type.upper()
+        if self._dht_type not in self._SUPPORTED_SENSOR_TYPES:
+            raise ValueError('Error: Unsupported DHT sensor type.')
+
         self._chip_path = chip_path
         self._line_offset = line_offset
 
@@ -41,7 +49,7 @@ class DHTReader:
         """
         with gpiod.request_lines(
             self._chip_path,
-            consumer='DHT',
+            consumer=self._dht_type,
             config={self._line_offset: gpiod.LineSettings(direction=Direction.OUTPUT)}
         ) as request:
             request.set_value(self._line_offset, Value.ACTIVE)
@@ -49,24 +57,28 @@ class DHTReader:
 
             # Send start signal to the sensor
             request.set_value(self._line_offset, Value.INACTIVE)
-            time.sleep(0.02)  # Wait 20 ms
+            if self._dht_type == 'DHT11':
+                time.sleep(0.018)  # Wait 18 ms
+            elif self._dht_type == 'DHT22':
+                time.sleep(0.001)  # Wait 1 ms
 
             request.set_value(self._line_offset, Value.ACTIVE)
             # Configure the GPIO line for input mode
             request.reconfigure_lines(
                 config={self._line_offset: gpiod.LineSettings(direction=Direction.INPUT)}
             )
-            # Delay to line up with the first ~80 μs low pulse from the DHT sensor
-            time.sleep(0.000001)
 
             # Receive and process data
             pulses = self._receive_data(request)
+
             high_pulses = self._extract_high_pulses(pulses)
+
             binary_data = self._convert_to_binary(high_pulses)
 
             self._validate_checksum(binary_data)
 
             humidity = self._get_humidity(binary_data)
+
             temperature, is_negative = self._get_temperature(binary_data)
 
             return humidity, temperature, is_negative
@@ -135,17 +147,12 @@ class DHTReader:
 
         Returns:
             float: The humidity value.
-
-        Raises:
-            ValueError: If the DHT type is not supported.
         """
         # Humidity is 2 bytes
         if self._dht_type == 'DHT11':
             humidity = binary_data[0] + (binary_data[1] / 10)
         elif self._dht_type == 'DHT22':
             humidity = ((binary_data[0] << 8) | binary_data[1]) / 10
-        else:
-            raise ValueError('Error: Unsupported DHT type')
 
         return humidity
 
@@ -159,9 +166,6 @@ class DHTReader:
         Returns:
             tuple[float, bool]: A tuple containing temperature
             and a boolean indicating negative temperature.
-
-        Raises:
-            ValueError: If the DHT type is not supported.
         """
         # Temperature is 2 bytes
         if self._dht_type == 'DHT11':
@@ -170,8 +174,6 @@ class DHTReader:
         elif self._dht_type == 'DHT22':
             temperature = (((binary_data[2] & 0x7F) << 8) | binary_data[3]) / 10
             is_negative = bool(binary_data[2] & 0x80)
-        else:
-            raise ValueError('Error: Unsupported DHT type')
 
         return temperature, is_negative
 
