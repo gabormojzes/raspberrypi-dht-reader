@@ -34,10 +34,11 @@ class DHTReader:
         """
         self._dht_type = dht_type.upper()
         if self._dht_type not in self._SUPPORTED_SENSOR_TYPES:
-            raise ValueError('Error: Unsupported DHT sensor type.')
+            raise ValueError('Error: Unsupported DHT sensor type. Please choose either DHT11 or DHT22.')
 
         self._chip_path = chip_path
         self._line_offset = line_offset
+        self._last_called = 0
 
     def read_data(self) -> tuple[float, float, bool]:
         """
@@ -46,7 +47,23 @@ class DHTReader:
         Returns:
             tuple[float, float, bool]: A tuple containing humidity, temperature,
             and a boolean indicating negative temperature.
+
+        Raises:
+            ValueError: If the elapsed time between readings is less
+            than the required minimum for the specified sensor type.
+                - For DHT11 sensor, the minimum elapsed time is 1 second.
+                - For DHT22 sensor, the minimum elapsed time is 2 seconds.
         """
+
+        elapsed_time_between_readings = time.monotonic() - self._last_called
+
+        if self._dht_type == 'DHT11' and elapsed_time_between_readings < 1:
+            raise ValueError('Error: Elapsed time between readings must be at least 1 second for DHT11 sensor.')
+        elif self._dht_type == 'DHT22' and elapsed_time_between_readings < 2:
+            raise ValueError('Error: Elapsed time between readings must be at least 2 seconds for DHT22 sensor.')
+
+        self._last_called = time.monotonic()
+
         with gpiod.request_lines(
             self._chip_path,
             consumer=self._dht_type,
@@ -99,7 +116,7 @@ class DHTReader:
             start_time = time.monotonic()
             while request.get_value(self._line_offset) == pulse:
                 if time.monotonic() - start_time > self._PULSE_TIMEOUT_THRESHOLD:
-                    raise RuntimeError('Error: Pulse timeout')
+                    raise RuntimeError('Error: Pulse timeout.')
             pulses[i] = time.monotonic() - start_time
 
         return pulses
@@ -193,4 +210,4 @@ class DHTReader:
         calculated_checksum = (binary_data[0] + binary_data[1] + binary_data[2] + binary_data[3]) & 0xFF
 
         if calculated_checksum != received_checksum:
-            raise RuntimeError('Error: Invalid checksum')
+            raise RuntimeError('Error: Invalid checksum.')
