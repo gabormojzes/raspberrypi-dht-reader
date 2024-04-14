@@ -21,10 +21,9 @@ dht_reader = DHTReader(dht_type, chip_path, line_offset)
 while True:
     try:
         # Read sensor data
-        humidity, temperature, is_negative = dht_reader.read_data()
-        temperature_sign = '-' if is_negative else ''
+        humidity, temperature_c, temperature_f = dht_reader.read_data()
 
-        print(f'Humidity: {humidity}% Temperature: {temperature_sign}{temperature}°C')
+        print(f'Humidity: {humidity:.1f}% Temperature: {temperature_c:.1f}°C {temperature_f:.1f}°F')
 
     except Exception as e:
         print(str(e))

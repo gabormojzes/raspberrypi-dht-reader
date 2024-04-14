@@ -33,6 +33,7 @@ class DHTReader:
             ValueError: If the DHT type is not supported.
         """
         self._dht_type = dht_type.upper()
+
         if self._dht_type not in self._SUPPORTED_SENSOR_TYPES:
             raise ValueError('Error: Unsupported DHT sensor type. Please choose either DHT11 or DHT22.')
 
@@ -40,13 +41,13 @@ class DHTReader:
         self._line_offset = line_offset
         self._last_called = 0
 
-    def read_data(self) -> tuple[float, float, bool]:
+    def read_data(self) -> tuple[float, float, float]:
         """
         Reads data from the DHT sensor.
 
         Returns:
-            tuple[float, float, bool]: A tuple containing humidity, temperature,
-            and a boolean indicating negative temperature.
+            tuple[float, float, float]: A tuple containing humidity, temperature in Celsius
+            and temperature in Fahrenheit.
 
         Raises:
             ValueError: If the elapsed time between readings is less
@@ -96,9 +97,11 @@ class DHTReader:
 
             humidity = self._get_humidity(binary_data)
 
-            temperature, is_negative = self._get_temperature(binary_data)
+            temperature_c = self._get_temperature(binary_data)
 
-            return humidity, temperature, is_negative
+            temperature_f = self._convert_celsius_to_fahrenheit(temperature_c)
+
+            return humidity, temperature_c, temperature_f
 
     def _receive_data(self, request: gpiod.LineRequest) -> list[float]:
         """
@@ -173,7 +176,7 @@ class DHTReader:
 
         return humidity
 
-    def _get_temperature(self, binary_data: array.array) -> tuple[float, bool]:
+    def _get_temperature(self, binary_data: array.array) -> float:
         """
         Gets temperature from binary data.
 
@@ -181,18 +184,18 @@ class DHTReader:
             binary_data (array.array): A list containing binary data.
 
         Returns:
-            tuple[float, bool]: A tuple containing temperature
-            and a boolean indicating negative temperature.
+            float: Temperature value in Celsius.
         """
         # Temperature is 2 bytes
         if self._dht_type == 'DHT11':
             temperature = binary_data[2] + (binary_data[3] / 10)
-            is_negative = False
         elif self._dht_type == 'DHT22':
             temperature = (((binary_data[2] & 0x7F) << 8) | binary_data[3]) / 10
             is_negative = bool(binary_data[2] & 0x80)
+            if is_negative:
+                temperature = -temperature
 
-        return temperature, is_negative
+        return temperature
 
     @staticmethod
     def _validate_checksum(binary_data: array.array) -> None:
@@ -211,3 +214,16 @@ class DHTReader:
 
         if calculated_checksum != received_checksum:
             raise RuntimeError('Error: Invalid checksum.')
+
+    @staticmethod
+    def _convert_celsius_to_fahrenheit(temperature_c: float) -> float:
+        """
+        Convert temperature from Celsius to Fahrenheit.
+
+        Parameters:
+            temperature_c (float): Temperature in Celsius to be converted.
+
+        Returns:
+            float: Temperature converted to Fahrenheit.
+        """
+        return (temperature_c * 1.8) + 32

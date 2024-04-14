@@ -22,5 +22,5 @@ python run.py <dht_type> <chip_path> <line_offset> <sensor_reading_delay>
 
 ### Sample output
 ```
-Humidity: 60.1% Temperature: 21.5°C
+Humidity: 60.1% Temperature: 22.4°C 72.3°F
 ```
