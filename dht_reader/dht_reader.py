@@ -48,22 +48,8 @@ class DHTReader:
         Returns:
             tuple[float, float, float]: A tuple containing humidity, temperature in Celsius
             and temperature in Fahrenheit.
-
-        Raises:
-            ValueError: If the elapsed time between readings is less
-            than the required minimum for the specified sensor type.
-                - For DHT11 sensor, the minimum elapsed time is 1 second.
-                - For DHT22 sensor, the minimum elapsed time is 2 seconds.
         """
-
-        elapsed_time_between_readings = time.monotonic() - self._last_called
-
-        if self._dht_type == 'DHT11' and elapsed_time_between_readings < 1:
-            raise ValueError('Error: Elapsed time between readings must be at least 1 second for DHT11 sensor.')
-        elif self._dht_type == 'DHT22' and elapsed_time_between_readings < 2:
-            raise ValueError('Error: Elapsed time between readings must be at least 2 seconds for DHT22 sensor.')
-
-        self._last_called = time.monotonic()
+        self._check_elapsed_time_between_readings()
 
         with gpiod.request_lines(
             self._chip_path,
@@ -215,12 +201,31 @@ class DHTReader:
         if calculated_checksum != received_checksum:
             raise RuntimeError('Error: Invalid checksum.')
 
+    def _check_elapsed_time_between_readings(self) -> None:
+        """
+        Checks elapsed time between readings.
+
+        Raises:
+            ValueError: If the elapsed time between readings is less
+            than the required minimum for the specified sensor type.
+                - For DHT11 sensor, the minimum elapsed time is 1 second.
+                - For DHT22 sensor, the minimum elapsed time is 2 seconds.
+        """
+        elapsed_time = time.monotonic() - self._last_called
+
+        if self._dht_type == 'DHT11' and elapsed_time < 1:
+            raise ValueError('Error: Elapsed time between readings must be at least 1 second for DHT11 sensor.')
+        elif self._dht_type == 'DHT22' and elapsed_time < 2:
+            raise ValueError('Error: Elapsed time between readings must be at least 2 seconds for DHT22 sensor.')
+
+        self._last_called = time.monotonic()
+
     @staticmethod
     def _convert_celsius_to_fahrenheit(temperature_c: float) -> float:
         """
-        Convert temperature from Celsius to Fahrenheit.
+        Converts temperature from Celsius to Fahrenheit.
 
-        Parameters:
+        Args:
             temperature_c (float): Temperature in Celsius to be converted.
 
         Returns:
