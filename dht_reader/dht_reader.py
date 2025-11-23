@@ -12,13 +12,17 @@ class DHTReader:
         _PULSE_TIMEOUT_THRESHOLD (float): Timeout threshold for pulse reception (100 μs)
         _EXPECTED_PULSES (int): Expected number of pulses during data reception from DHT sensor
         _PULSE_DURATION_THRESHOLD (int): Threshold for pulse duration for binary conversion (50 μs)
-        _SUPPORTED_SENSOR_TYPES (list[str]): List of supported DHT sensor types.
+        _SUPPORTED_SENSOR_TYPES (set[str]): List of supported DHT sensor types.
+        _SENSOR_MIN_DELAY (dict[str, int]): Minimum required delay between readings (seconds).
     """
-
     _PULSE_TIMEOUT_THRESHOLD = 0.0001
     _EXPECTED_PULSES = 83
     _PULSE_DURATION_THRESHOLD = 50
-    _SUPPORTED_SENSOR_TYPES = ['DHT11', 'DHT22']
+    _SUPPORTED_SENSOR_TYPES = {'DHT11', 'DHT22'}
+    _SENSOR_MIN_DELAY = {
+        'DHT11': 1,
+        'DHT22': 2,
+    }
 
     def __init__(self, dht_type: str, chip_path: str, line_offset: int) -> None:
         """
@@ -32,11 +36,11 @@ class DHTReader:
         Raises:
             ValueError: If the DHT type is not supported.
         """
-        self._dht_type = dht_type.upper()
+        dht_type = dht_type.upper()
+        if dht_type not in self._SUPPORTED_SENSOR_TYPES:
+            raise ValueError(f"Error: Unsupported DHT sensor type: {dht_type}. Supported: {', '.join(self._SUPPORTED_SENSOR_TYPES)}")
 
-        if self._dht_type not in self._SUPPORTED_SENSOR_TYPES:
-            raise ValueError('Error: Unsupported DHT sensor type. Please choose either DHT11 or DHT22.')
-
+        self._dht_type = dht_type
         self._chip_path = chip_path
         self._line_offset = line_offset
         self._last_called = 0
@@ -56,38 +60,41 @@ class DHTReader:
             consumer=self._dht_type,
             config={self._line_offset: gpiod.LineSettings(direction=Direction.OUTPUT)}
         ) as request:
-            request.set_value(self._line_offset, Value.ACTIVE)
-            time.sleep(0.5)  # Wait 500 ms
-
-            # Send start signal to the sensor
-            request.set_value(self._line_offset, Value.INACTIVE)
-            if self._dht_type == 'DHT11':
-                time.sleep(0.018)  # Wait 18 ms
-            elif self._dht_type == 'DHT22':
-                time.sleep(0.001)  # Wait 1 ms
-
-            request.set_value(self._line_offset, Value.ACTIVE)
-            # Configure the GPIO line for input mode
-            request.reconfigure_lines(
-                config={self._line_offset: gpiod.LineSettings(direction=Direction.INPUT)}
-            )
-
-            # Receive and process data
+            self._send_start_signal(request)
             pulses = self._receive_data(request)
-
             high_pulses = self._extract_high_pulses(pulses)
-
             binary_data = self._convert_to_binary(high_pulses)
 
             self._validate_checksum(binary_data)
 
             humidity = self._get_humidity(binary_data)
-
             temperature_c = self._get_temperature(binary_data)
-
             temperature_f = self._convert_celsius_to_fahrenheit(temperature_c)
 
             return humidity, temperature_c, temperature_f
+
+    def _send_start_signal(self, request: gpiod.LineRequest) -> None:
+        """
+        Sends the start signal to the sensor.
+
+        Args:
+            request (gpiod.LineRequest): The GPIO line request object.
+        """
+        request.set_value(self._line_offset, Value.ACTIVE)
+        time.sleep(0.5)  # Wait 500 ms
+
+        # Send start signal to the sensor
+        request.set_value(self._line_offset, Value.INACTIVE)
+        if self._dht_type == 'DHT11':
+            time.sleep(0.018)  # Wait 18 ms
+        elif self._dht_type == 'DHT22':
+            time.sleep(0.001)  # Wait 1 ms
+
+        request.set_value(self._line_offset, Value.ACTIVE)
+        # Configure the GPIO line for input mode
+        request.reconfigure_lines(
+            config={self._line_offset: gpiod.LineSettings(direction=Direction.INPUT)}
+        )
 
     def _receive_data(self, request: gpiod.LineRequest) -> list[float]:
         """
@@ -99,7 +106,7 @@ class DHTReader:
         Returns:
             list[float]: A list containing pulse duration data.
         """
-        pulses = [0] * self._EXPECTED_PULSES
+        pulses = [0.0] * self._EXPECTED_PULSES
         for i, _ in enumerate(pulses):
             pulse = [Value.INACTIVE, Value.ACTIVE][i % 2]
             start_time = time.monotonic()
@@ -196,7 +203,7 @@ class DHTReader:
         """
         # Checksum is 1 byte
         received_checksum = binary_data[4]
-        calculated_checksum = (binary_data[0] + binary_data[1] + binary_data[2] + binary_data[3]) & 0xFF
+        calculated_checksum = sum(binary_data[:4]) & 0xFF
 
         if calculated_checksum != received_checksum:
             raise RuntimeError('Error: Invalid checksum.')
@@ -212,11 +219,10 @@ class DHTReader:
                 - For DHT22 sensor, the minimum elapsed time is 2 seconds.
         """
         elapsed_time = time.monotonic() - self._last_called
+        min_time = self._SENSOR_MIN_DELAY[self._dht_type]
 
-        if self._dht_type == 'DHT11' and elapsed_time < 1:
-            raise ValueError('Error: Elapsed time between readings must be at least 1 second for DHT11 sensor.')
-        elif self._dht_type == 'DHT22' and elapsed_time < 2:
-            raise ValueError('Error: Elapsed time between readings must be at least 2 seconds for DHT22 sensor.')
+        if elapsed_time < min_time:
+            raise ValueError(f"Error: Elapsed time between readings must be at least {min_time} seconds for {self._dht_type}.")
 
         self._last_called = time.monotonic()
 
