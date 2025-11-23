@@ -1,9 +1,10 @@
 # Raspberry Pi DHT11/DHT22 Reader
 
-This project has been tested on a Raspberry Pi 5, with both Ubuntu Server version 23.10 (64-bit) and Raspberry Pi OS (64-bit) (Debian version: 12) operating systems.  
+A Python class for reading temperature and humidity data from DHT11/DHT22 sensors via GPIO.
 
-Python version used: 3.11.6  
-gpiod version used: 2.1.3, available at https://pypi.org/project/gpiod/
+This project has been tested on a Raspberry Pi 5 running Ubuntu Server 24.04.3 LTS (64-bit).  
+Python version used: 3.12.3  
+gpiod version used: 2.4.0, available at https://pypi.org/project/gpiod/
 
 ### How to use
 ```
